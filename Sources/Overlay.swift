@@ -88,7 +88,7 @@ final class OverlayWindow: NSWindow {
 
     init(shot: ScreenShot) {
         overlay = OverlayView(shot: shot)
-        super.init(contentRect: shot.screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        super.init(contentRect: shot.frame, styleMask: .borderless, backing: .buffered, defer: false)
         isReleasedWhenClosed = false
         level = .screenSaver
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
@@ -96,7 +96,7 @@ final class OverlayWindow: NSWindow {
         hasShadow = false
         backgroundColor = .black
         contentView = overlay
-        setFrame(shot.screen.frame, display: false)
+        setFrame(shot.frame, display: false)
     }
 
     override var canBecomeKey: Bool { true }
@@ -169,8 +169,8 @@ final class OverlayView: NSView {
 
     init(shot: ScreenShot) {
         self.shot = shot
-        self.nsImage = NSImage(cgImage: shot.image, size: shot.screen.frame.size)
-        super.init(frame: NSRect(origin: .zero, size: shot.screen.frame.size))
+        self.nsImage = NSImage(cgImage: shot.image, size: shot.frame.size)
+        super.init(frame: NSRect(origin: .zero, size: shot.frame.size))
     }
     required init?(coder: NSCoder) { fatalError() }
 
@@ -187,6 +187,18 @@ final class OverlayView: NSView {
         removeToolbar()
         needsDisplay = true
     }
+
+    #if DEMO
+    /// Used only by scripts/make-demo.sh to render the README screenshot.
+    func loadDemo(selection: NSRect, annotations: [Annotation], tool: Tool?, colorIndex: Int) {
+        self.selection = selection
+        self.annotations = annotations
+        self.tool = tool
+        Self.colorIndex = colorIndex
+        showToolbar(for: selection)
+        needsDisplay = true
+    }
+    #endif
 
     // MARK: Drawing
 

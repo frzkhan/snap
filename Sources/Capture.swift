@@ -2,7 +2,7 @@ import AppKit
 import ScreenCaptureKit
 
 struct ScreenShot {
-    let screen: NSScreen
+    let frame: NSRect   // the screen's frame in global coordinates
     let image: CGImage
 }
 
@@ -20,7 +20,7 @@ func captureAllScreens() async throws -> [ScreenShot] {
         config.showsCursor = false
         config.captureResolution = .best
         let img = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: config)
-        result.append(ScreenShot(screen: screen, image: img))
+        result.append(ScreenShot(frame: screen.frame, image: img))
     }
     return result
 }
