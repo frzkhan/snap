@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snap — tiny screenshot tool for Mac</title>
+<meta name="description" content="A lightweight macOS menu bar screenshot tool. Press a shortcut, select an area, draw arrows, circles and boxes, then copy or save. About 13 MB of memory.">
+<link rel="icon" type="image/png" href="icon.png">
+<meta property="og:title" content="Snap — tiny screenshot tool for Mac">
+<meta property="og:description" content="Press a shortcut, select, annotate, copy or save. About 13 MB of memory.">
+<meta property="og:image" content="https://frzkhan.github.io/snap/screenshot.png">
+<style>
+  :root {
+    --bg: #f7f8fc;
+    --surface: #ffffff;
+    --text: #15182b;
+    --muted: #5d6280;
+    --border: #e3e5ef;
+    --accent: #3b4fe0;
+    --accent-2: #5c8cff;
+    --accent-text: #ffffff;
+    --kbd-bg: #eef0f7;
+    --shadow: 0 20px 50px -20px rgba(30, 40, 120, .35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1020;
+      --surface: #171a2e;
+      --text: #eceefa;
+      --muted: #a2a7c4;
+      --border: #2a2e4a;
+      --accent: #6f8bff;
+      --accent-2: #8fa8ff;
+      --accent-text: #0e1020;
+      --kbd-bg: #232741;
+      --shadow: 0 20px 50px -20px rgba(0, 0, 0, .7);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  }
+  a { color: var(--accent); }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+
+  header.hero { text-align: center; padding: 64px 0 40px; }
+  .hero img.icon { width: 112px; height: 112px; }
+  .hero h1 { font-size: clamp(40px, 7vw, 60px); line-height: 1.05; margin: 12px 0 10px; letter-spacing: -0.02em; }
+  .hero p.tag { font-size: clamp(18px, 2.4vw, 21px); color: var(--muted); max-width: 620px; margin: 0 auto 30px; }
+
+  .download {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: linear-gradient(180deg, var(--accent-2), var(--accent));
+    color: var(--accent-text); text-decoration: none;
+    font-size: 18px; font-weight: 600;
+    padding: 15px 30px; border-radius: 12px;
+    box-shadow: var(--shadow);
+    transition: transform .12s ease, filter .12s ease;
+  }
+  .download:hover { transform: translateY(-1px); filter: brightness(1.05); }
+  .download:active { transform: translateY(0); }
+  .download svg { width: 20px; height: 20px; }
+  .meta { margin-top: 14px; color: var(--muted); font-size: 14px; }
+  .meta a { color: inherit; }
+
+  .shot { margin: 48px 0 0; }
+  .shot img {
+    display: block; width: 100%; height: auto;
+    border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow);
+  }
+
+  section { padding: 64px 0 0; }
+  h2 { font-size: 28px; letter-spacing: -0.01em; margin: 0 0 20px; }
+
+  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px;
+  }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+  kbd {
+    font: 600 13px/1 ui-monospace, "SF Mono", Menlo, monospace;
+    background: var(--kbd-bg); border: 1px solid var(--border); border-bottom-width: 2px;
+    border-radius: 6px; padding: 3px 7px; white-space: nowrap;
+  }
+
+  ol.steps { padding-left: 22px; margin: 0; }
+  ol.steps li { margin: 0 0 12px; }
+  .note {
+    margin-top: 20px; padding: 16px 18px; border-radius: 12px;
+    background: var(--surface); border: 1px solid var(--border); color: var(--muted); font-size: 15px;
+  }
+  .note strong { color: var(--text); }
+  code {
+    font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+    background: var(--kbd-bg); border-radius: 5px; padding: 2px 6px; word-break: break-all;
+  }
+
+  footer { text-align: center; color: var(--muted); font-size: 14px; padding: 72px 0 48px; }
+</style>
+</head>
+<body>
+  <header class="hero wrap">
+    <img class="icon" src="icon.png" alt="Snap app icon">
+    <h1>Snap</h1>
+    <p class="tag">A tiny screenshot tool for your Mac. Press a shortcut, select an area, draw an arrow or a box, then copy or save. About 13&nbsp;MB of memory.</p>
+    <a class="download" href="https://github.com/frzkhan/snap/releases/latest/download/Snap.zip">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="m6.5 10 5.5 5.5 5.5-5.5"/><path d="M5 20h14"/></svg>
+      Download for Mac
+    </a>
+    <div class="meta">
+      <span id="version">Latest version</span> · macOS 14 or later · Apple Silicon &amp; Intel · Free and open source<br>
+      <a href="https://github.com/frzkhan/snap">View on GitHub</a>
+    </div>
+
+    <div class="shot">
+      <img src="screenshot.png" width="2200" height="1360"
+           alt="Snap capturing part of a dashboard, with an arrow, a circle and a rectangle drawn on it and the toolbar below the selection">
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section>
+      <h2>Features</h2>
+      <div class="features">
+        <div class="card"><h3>Your own shortcut</h3><p>Starts as <kbd>⇧⌘2</kbd>. Change it to anything in Settings.</p></div>
+        <div class="card"><h3>Draw on it</h3><p>Arrows, circles and rectangles in five colours, with undo.</p></div>
+        <div class="card"><h3>Copy or save</h3><p>Copy to the clipboard, or save a PNG straight into a folder you choose.</p></div>
+        <div class="card"><h3>Really lightweight</h3><p>About 13&nbsp;MB of memory and a download under 1&nbsp;MB. Lives in the menu bar only.</p></div>
+        <div class="card"><h3>Sharp on every screen</h3><p>Works across multiple displays at full Retina resolution.</p></div>
+        <div class="card"><h3>Open at login</h3><p>Turn it on once from the menu bar and it's always ready.</p></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Install</h2>
+      <ol class="steps">
+        <li>Click <strong>Download for Mac</strong> above and unzip <code>Snap.zip</code>.</li>
+        <li>Drag <strong>Snap.app</strong> into your <strong>Applications</strong> folder and open it. A camera icon appears in the menu bar.</li>
+        <li>The first time you take a screenshot, macOS asks for permission. Turn on <strong>Snap</strong> in System Settings → Privacy &amp; Security → Screen &amp; System Audio Recording, then press the shortcut again.</li>
+      </ol>
+      <div class="note">
+        <strong>If macOS says Snap can't be opened:</strong> Snap isn't notarized by Apple yet, so macOS blocks it the first time. Open System Settings → Privacy &amp; Security, scroll down and click <strong>Open Anyway</strong>. Or run this in Terminal:
+        <code>xattr -dr com.apple.quarantine /Applications/Snap.app</code>
+      </div>
+    </section>
+
+    <section>
+      <h2>Shortcuts</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Action</th><th>Key</th></tr></thead>
+          <tbody>
+            <tr><td>Take a screenshot</td><td><kbd>⇧⌘2</kbd> (or your own)</td></tr>
+            <tr><td>Arrow / Circle / Rectangle</td><td><kbd>A</kbd> <kbd>O</kbd> <kbd>R</kbd></td></tr>
+            <tr><td>Pick a colour</td><td><kbd>1</kbd> – <kbd>5</kbd></td></tr>
+            <tr><td>Perfect square / circle, 45° arrow</td><td>Hold <kbd>Shift</kbd> while drawing</td></tr>
+            <tr><td>Undo</td><td><kbd>⌘Z</kbd></td></tr>
+            <tr><td>Copy to clipboard</td><td><kbd>Return</kbd> or <kbd>⌘C</kbd></td></tr>
+            <tr><td>Save to folder</td><td><kbd>⌘S</kbd></td></tr>
+            <tr><td>Cancel</td><td><kbd>Esc</kbd></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    Snap is free and open source. <a href="https://github.com/frzkhan/snap">Source code</a> · <a href="https://github.com/frzkhan/snap/releases">All releases</a>
+  </footer>
+
+<script>
+  // Show the latest version number next to the button (falls back to "Latest version").
+  fetch("https://api.github.com/repos/frzkhan/snap/releases/latest")
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (d) { if (d && d.tag_name) document.getElementById("version").textContent = "Version " + d.tag_name.replace(/^v/, ""); })
+    .catch(function () {});
+</script>
+</body>
+</html>
