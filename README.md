@@ -11,7 +11,7 @@ It's a single native Swift app with no dependencies. It uses about **13 MB of me
 ## Features
 
 - **Global shortcut** (default `⇧⌘2`). You can change it in Settings.
-- **Region select** across multiple displays at full Retina resolution, with the size shown as you drag.
+- **Region select** across multiple displays at full Retina resolution, with the size shown as you drag. Drag the edges or corners afterwards to fine-tune it, or drag inside to move it.
 - **Drawing tools:** arrow, circle and rectangle, in 5 colours, with undo.
 - **Copy** to the clipboard, or **save** a PNG straight into a folder you choose.
 - **Open at Login** option.
@@ -59,7 +59,7 @@ Press **`⇧⌘2`**, or click the menu bar icon and choose **Capture Region**. T
 | Cancel | ✕ | `Esc` |
 
 - Hold **Shift** while drawing to make perfect squares and circles, or to snap arrows to 45°.
-- Click an active tool again to turn it off. With no tool selected, dragging makes a new selection.
+- Click an active tool again to turn it off. With no tool selected, drag an edge or corner of the selection to resize it, drag inside it to move it, or drag outside it to make a new selection.
 
 ## Settings
 

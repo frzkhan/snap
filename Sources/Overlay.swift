@@ -155,13 +155,26 @@ final class OverlayView: NSView {
     weak var session: CaptureSession?
     private static var colorIndex = 0   // remembered between captures
 
+    private enum SelectionHandle { case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left }
+
+    private enum Drag {
+        case none
+        case newSelection(NSPoint)
+        case annotation(Annotation)
+        case resize(SelectionHandle, NSRect, NSPoint)
+        case move(NSRect, NSPoint)
+    }
+
+    private static let handleSize: CGFloat = 7
+    private static let handleReach: CGFloat = 9
+    private static let edgeReach: CGFloat = 6
+
     private let shot: ScreenShot
     private let nsImage: NSImage
-    private var start: NSPoint?
     private var selection: NSRect?
     private var tool: Tool?
     private var annotations: [Annotation] = []
-    private var drawing: Annotation?
+    private var drag: Drag = .none
 
     private var toolbar: ToolbarView?
     private var toolButtons: [Tool: NSButton] = [:]
@@ -177,13 +190,20 @@ final class OverlayView: NSView {
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .crosshair) }
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .crosshair)
+        guard tool == nil, let sel = selection else { return }
+        for (handle, rect) in handleAreas(in: sel) where rect.width > 0 && rect.height > 0 {
+            addCursorRect(rect, cursor: cursor(for: handle))
+        }
+        let inner = sel.insetBy(dx: Self.handleReach, dy: Self.handleReach)
+        if inner.width > 0 && inner.height > 0 { addCursorRect(inner, cursor: .openHand) }
+    }
 
     func clearSelection() {
         selection = nil
-        start = nil
+        drag = .none
         annotations.removeAll()
-        drawing = nil
         removeToolbar()
         needsDisplay = true
     }
@@ -218,13 +238,14 @@ final class OverlayView: NSView {
         NSGraphicsContext.saveGraphicsState()
         NSBezierPath(rect: sel).addClip()
         annotations.forEach { $0.draw() }
-        drawing?.draw()
+        if case .annotation(let inProgress) = drag { inProgress.draw() }
         NSGraphicsContext.restoreGraphicsState()
 
         NSColor.white.setStroke()
         let border = NSBezierPath(rect: sel.insetBy(dx: -0.5, dy: -0.5))
         border.lineWidth = 1
         border.stroke()
+        if tool == nil, !isCreatingSelection { drawHandles(in: sel) }
         drawLabel("\(Int(sel.width)) × \(Int(sel.height))",
                   at: NSPoint(x: sel.minX, y: sel.minY > 26 ? sel.minY - 24 : sel.minY + 4))
     }
@@ -252,43 +273,165 @@ final class OverlayView: NSView {
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         if let t = tool, selection != nil {
-            drawing = Annotation(tool: t, start: p, end: p, color: palette[Self.colorIndex])
+            drag = .annotation(Annotation(tool: t, start: p, end: p, color: palette[Self.colorIndex]))
             return
         }
         session?.selectionStarted(in: self)
+        if let sel = selection, let handle = handle(at: p, in: sel) {
+            drag = .resize(handle, sel, p)
+            return
+        }
+        if let sel = selection, sel.contains(p) {
+            drag = .move(sel, p)
+            return
+        }
         clearSelection()
-        start = p
+        drag = .newSelection(p)
     }
 
     override func mouseDragged(with event: NSEvent) {
         var p = convert(event.locationInWindow, from: nil)
-        if var d = drawing {
-            if event.modifierFlags.contains(.shift) { p = constrained(from: d.start, to: p, tool: d.tool) }
-            d.end = p
-            drawing = d
+        switch drag {
+        case .annotation(var a):
+            if event.modifierFlags.contains(.shift) { p = constrained(from: a.start, to: p, tool: a.tool) }
+            a.end = p
+            drag = .annotation(a)
             needsDisplay = true
-            return
+
+        case .newSelection(let anchor):
+            selection = NSRect(x: min(anchor.x, p.x), y: min(anchor.y, p.y),
+                               width: abs(p.x - anchor.x), height: abs(p.y - anchor.y)).intersection(bounds)
+            needsDisplay = true
+
+        case .resize(let handle, let original, let anchor):
+            selection = resized(original, handle: handle, by: NSPoint(x: p.x - anchor.x, y: p.y - anchor.y))
+            needsDisplay = true
+            positionToolbar()
+
+        case .move(let original, let anchor):
+            selection = moved(original, by: NSPoint(x: p.x - anchor.x, y: p.y - anchor.y))
+            needsDisplay = true
+            positionToolbar()
+
+        case .none:
+            break
         }
-        guard let s = start else { return }
-        selection = NSRect(x: min(s.x, p.x), y: min(s.y, p.y), width: abs(p.x - s.x), height: abs(p.y - s.y))
-            .intersection(bounds)
-        needsDisplay = true
     }
 
     override func mouseUp(with event: NSEvent) {
-        if let d = drawing {
-            drawing = nil
-            if !d.isTrivial { annotations.append(d) }
+        switch drag {
+        case .annotation(let a):
+            drag = .none
+            if !a.isTrivial { annotations.append(a) }
             needsDisplay = true
-            return
-        }
-        start = nil
-        guard let sel = selection, sel.width >= 3, sel.height >= 3 else {
-            selection = nil
+
+        case .newSelection:
+            drag = .none
+            guard let sel = selection, sel.width >= 3, sel.height >= 3 else {
+                selection = nil
+                needsDisplay = true
+                return
+            }
+            showToolbar(for: sel)
+
+        case .resize(_, _, _), .move(_, _):
+            drag = .none
             needsDisplay = true
-            return
+            window?.invalidateCursorRects(for: self)
+
+        case .none:
+            break
         }
-        showToolbar(for: sel)
+    }
+
+    // MARK: Selection handles
+
+    private var isCreatingSelection: Bool {
+        if case .newSelection = drag { return true }
+        return false
+    }
+
+    /// Corner hit areas first, then edges, so corners win where they meet.
+    private func handleAreas(in r: NSRect) -> [(SelectionHandle, NSRect)] {
+        let c = Self.handleReach
+        let e = Self.edgeReach
+        return [
+            (.topLeft, NSRect(x: r.minX - c, y: r.minY - c, width: c * 2, height: c * 2)),
+            (.topRight, NSRect(x: r.maxX - c, y: r.minY - c, width: c * 2, height: c * 2)),
+            (.bottomLeft, NSRect(x: r.minX - c, y: r.maxY - c, width: c * 2, height: c * 2)),
+            (.bottomRight, NSRect(x: r.maxX - c, y: r.maxY - c, width: c * 2, height: c * 2)),
+            (.left, NSRect(x: r.minX - e, y: r.minY + c, width: e * 2, height: r.height - c * 2)),
+            (.right, NSRect(x: r.maxX - e, y: r.minY + c, width: e * 2, height: r.height - c * 2)),
+            (.top, NSRect(x: r.minX + c, y: r.minY - e, width: r.width - c * 2, height: e * 2)),
+            (.bottom, NSRect(x: r.minX + c, y: r.maxY - e, width: r.width - c * 2, height: e * 2)),
+        ]
+    }
+
+    private func handle(at p: NSPoint, in sel: NSRect) -> SelectionHandle? {
+        handleAreas(in: sel).first { $0.1.contains(p) }?.0
+    }
+
+    private func resized(_ r: NSRect, handle: SelectionHandle, by d: NSPoint) -> NSRect {
+        var minX = r.minX, maxX = r.maxX, minY = r.minY, maxY = r.maxY
+        switch handle {
+        case .topLeft: minX += d.x; minY += d.y
+        case .top: minY += d.y
+        case .topRight: maxX += d.x; minY += d.y
+        case .right: maxX += d.x
+        case .bottomRight: maxX += d.x; maxY += d.y
+        case .bottom: maxY += d.y
+        case .bottomLeft: minX += d.x; maxY += d.y
+        case .left: minX += d.x
+        }
+        minX = max(bounds.minX, minX)
+        maxX = min(bounds.maxX, maxX)
+        minY = max(bounds.minY, minY)
+        maxY = min(bounds.maxY, maxY)
+        let out = NSRect(x: min(minX, maxX), y: min(minY, maxY),
+                         width: abs(maxX - minX), height: abs(maxY - minY))
+        return out.width >= 4 && out.height >= 4 ? out : r
+    }
+
+    private func moved(_ r: NSRect, by d: NSPoint) -> NSRect {
+        let x = max(bounds.minX, min(r.minX + d.x, bounds.maxX - r.width))
+        let y = max(bounds.minY, min(r.minY + d.y, bounds.maxY - r.height))
+        return NSRect(x: x, y: y, width: r.width, height: r.height)
+    }
+
+    private func drawHandles(in sel: NSRect) {
+        let s = Self.handleSize
+        for p in [NSPoint(x: sel.minX, y: sel.minY), NSPoint(x: sel.maxX, y: sel.minY),
+                  NSPoint(x: sel.minX, y: sel.maxY), NSPoint(x: sel.maxX, y: sel.maxY)] {
+            let box = NSRect(x: p.x - s / 2, y: p.y - s / 2, width: s, height: s)
+            NSColor.white.setFill()
+            NSBezierPath(roundedRect: box, xRadius: 1.5, yRadius: 1.5).fill()
+            NSColor.black.withAlphaComponent(0.45).setStroke()
+            let edge = NSBezierPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5), xRadius: 1.5, yRadius: 1.5)
+            edge.lineWidth = 1
+            edge.stroke()
+        }
+    }
+
+    private func cursor(for handle: SelectionHandle) -> NSCursor {
+        if #available(macOS 15.0, *) {
+            let position: NSCursor.FrameResizePosition
+            switch handle {
+            case .topLeft: position = .topLeft
+            case .top: position = .top
+            case .topRight: position = .topRight
+            case .right: position = .right
+            case .bottomRight: position = .bottomRight
+            case .bottom: position = .bottom
+            case .bottomLeft: position = .bottomLeft
+            case .left: position = .left
+            }
+            return NSCursor.frameResize(position: position, directions: .all)
+        }
+        switch handle {
+        case .left, .right: return .resizeLeftRight
+        case .top, .bottom: return .resizeUpDown
+        default: return .crosshair
+        }
     }
 
     /// Shift: square/circle for shapes, 45° snapping for arrows.
@@ -341,18 +484,25 @@ final class OverlayView: NSView {
         bar.layer?.borderWidth = 0.5
         bar.layer?.borderColor = NSColor.separatorColor.cgColor
 
-        let size = bar.fittingSize
+        bar.frame = NSRect(origin: .zero, size: bar.fittingSize)
+        addSubview(bar)
+        toolbar = bar
+        positionToolbar()
+        window?.invalidateCursorRects(for: self)
+        updateToolbarState()
+    }
+
+    /// Keeps the toolbar hugging the selection as its edges are dragged.
+    private func positionToolbar() {
+        guard let bar = toolbar, let sel = selection else { return }
+        let size = bar.frame.size
         var x = sel.maxX - size.width
         var y = sel.maxY + 6                                           // below the selection
         if y + size.height > bounds.maxY - 4 { y = sel.minY - size.height - 6 }   // else above
         if y < bounds.minY + 4 { y = sel.maxY - size.height - 6 }      // else inside, bottom edge
         x = max(bounds.minX + 4, min(x, bounds.maxX - size.width - 4))
         y = max(bounds.minY + 4, min(y, bounds.maxY - size.height - 4))
-        bar.frame = NSRect(x: x, y: y, width: size.width, height: size.height)
-        addSubview(bar)
-        toolbar = bar
-        window?.invalidateCursorRects(for: self)
-        updateToolbarState()
+        bar.frame.origin = NSPoint(x: x, y: y)
     }
 
     private func makeButton(_ symbol: String, _ tip: String, _ action: Selector) -> NSButton {
@@ -380,6 +530,8 @@ final class OverlayView: NSView {
         guard selection != nil else { return }
         tool = (tool == t) ? nil : t
         updateToolbarState()
+        needsDisplay = true
+        window?.invalidateCursorRects(for: self)
     }
 
     private func setColor(_ i: Int) {
@@ -387,6 +539,8 @@ final class OverlayView: NSView {
         Self.colorIndex = i
         if tool == nil { tool = .arrow }   // picking a color implies you want to draw
         updateToolbarState()
+        needsDisplay = true
+        window?.invalidateCursorRects(for: self)
     }
 
     @objc private func toolClicked(_ sender: NSButton) { setTool(Tool(rawValue: sender.tag)) }
